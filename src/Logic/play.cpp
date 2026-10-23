@@ -1250,7 +1250,14 @@ static void put_hold(Logic& logic, PlayLayer* play, bool icon2, int button, bool
     if (!body) return;
     bool have = Logic::button_held(body, button);
     bool wave = button == JUMP && body->m_isDart && logic.maintain_gravity && logic.records_player(icon2);
-    if (!want && button == JUMP) body->m_jumpBuffered = false;
+    if (!want && button == JUMP) {
+        body->m_jumpBuffered = false;
+        // the press gd queues on every reset leaves these armed, which made the cube hop once on respawn
+        if (logic.fresh_attempt_restore) {
+            body->m_wasJumpBuffered = false;
+            body->m_stateJumpBuffered = 0;
+        }
+    }
     if (!want && button == LEFT) body->m_holdingLeft = false;
     if (!want && button == RIGHT) body->m_holdingRight = false;
     if (have == want && !(wave && body->m_jumpBuffered != want)) return;
@@ -1395,6 +1402,7 @@ void Logic::restore_holds(PlayLayer* play) {
     }
     std::vector<PlayerButtonCommand> deferred;
     bool one_dual = play->m_gameState.m_isDualMode && !(play->m_levelSettings && play->m_levelSettings->m_twoPlayerMode);
+    fresh_attempt_restore = recording && !checkpoint && !backstepping;
     if (recording) {
         if (suppress_auto_hold) {
             if (play->m_player1) play->m_player1->releaseAllButtons();
@@ -1432,6 +1440,7 @@ void Logic::restore_holds(PlayLayer* play) {
         play->m_queuedButtons.push_back(cmd);
     }
     if (recording && checkpoint) sort_inputs();
+    fresh_attempt_restore = false;
     restoring_holds = false;
     restart_hold_captured = false;
     death_jump_p1 = death_jump_p2 = false;

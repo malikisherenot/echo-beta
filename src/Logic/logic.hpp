@@ -588,6 +588,7 @@ public:
 	bool physical_right_p1 = false, physical_left_p2 = false, physical_right_p2 = false;
 	bool ffmpeg_missing = false;
 	bool resume_pending = false;
+	bool fresh_attempt_restore = false;
 	bool sequence_enabled = false, sequence_random = false;
 	std::string macro_name = "Replay";
 	bool macro_name_typed = false;
