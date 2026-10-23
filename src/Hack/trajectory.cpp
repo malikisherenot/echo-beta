@@ -709,6 +709,8 @@ bool Trajectory::kept_matches(PlayLayer* play, bool linked, std::string& reason,
 bool Trajectory::begin_job(PlayLayer* play, std::vector<Line> lines, int limit, bool draw, bool sliced) {
 	cancel_job();
 	if (!play->m_objectLayer) return false;
+	for (const auto& line : lines)
+		if (!line.fake || !line.real) return false;
 	auto& logic = Logic::get();
 	auto& world = PredictedWorld::get();
 	if (lines.empty() && !logic.traj_moving_objects) return false;
@@ -724,7 +726,7 @@ bool Trajectory::begin_job(PlayLayer* play, std::vector<Line> lines, int limit, 
 	job.lines = std::move(lines);
 	job.started = chrono::steady_clock::now();
 	for (auto* fake : fakes)
-		if (!fake->getParent()) play->m_objectLayer->addChild(fake);
+		if (fake && !fake->getParent()) play->m_objectLayer->addChild(fake);
 	phys::prepare_prediction_art();
 	job.warp = play->m_gameState.m_timeWarp;
 	job.step_seconds = (float)((1.0 / logic.sample_rate()) * (double)std::clamp(job.warp, 0.f, 1.f));
@@ -1975,6 +1977,8 @@ void Trajectory::autoclick(PlayLayer* play) {
 	PerfScope click_time(PERF_AUTOCLICK);
 	auto& logic = Logic::get();
 	if (!logic.traj_autoclicker || !play || play->m_isPaused || play->m_playerDied) return;
+	// never start a job while one is simulating (it destroys the running job) or on a half torn down level
+	if (simulating || logic.predicting || !play->m_started || !play->m_player1 || !play->m_objectLayer || !draw_node || !fakes[0]) return;
 	if (play->m_hasCompletedLevel || play->m_levelEndAnimationStarted) return;
 	if (logic.step_frame < clicked_frame) clicked_frame = -1;
 	if (logic.step_frame == clicked_frame) return;
