@@ -1965,6 +1965,9 @@ class $modify(EchoPlayerObject, PlayerObject) {
 
     bool pushButton(PlayerButton button) {
         auto& logic = Logic::get();
+        // gd always queues a jump press inside resetLevel (silicate patch). while recording that press is not the player's
+        if (logic.resetting && logic.is_recording() && button == PlayerButton::Jump && !logic.predicting && !Trajectory::get().isFake(this))
+            return false;
         if (!Trajectory::get().isFake(this))
             if (tracing()) {
                 auto* layer = GJBaseGameLayer::get();
