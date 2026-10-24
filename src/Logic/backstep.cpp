@@ -388,9 +388,16 @@ bool Logic::step_back(PlayLayer* play, int steps) {
 }
 
 bool Logic::step_to(PlayLayer* play, int target, int keep_up_to) {
-    if (!play || !play->m_checkpointArray || target < 0) {
+    if (!play || !play->m_checkpointArray || !play->m_player1 || !play->m_objectLayer || target < 0) {
         return false;
     }
+    // holding the back key can come back in while a step back is still resetting the level
+    static bool g_in_step_to = false;
+    if (g_in_step_to) return false;
+    struct StepToGuard {
+        StepToGuard() { g_in_step_to = true; }
+        ~StepToGuard() { g_in_step_to = false; }
+    } step_to_guard;
     if (!backstep || backstep_target >= 0 || backstepping || render_capturing() ||
         play->m_hasCompletedLevel || play->m_levelEndAnimationStarted) {
         if (!backstep) message = "Turn on Backstep first";
@@ -405,7 +412,7 @@ bool Logic::step_to(PlayLayer* play, int target, int keep_up_to) {
         return false;
     }
     // DONT load a broken save
-    while (!backsteps.empty() && (backsteps.back().broken || !game_state_intact(backsteps.back().object->m_gameState))) {
+    while (!backsteps.empty() && (backsteps.back().broken || !backsteps.back().object || !game_state_intact(backsteps.back().object->m_gameState))) {
         backsteps.back().broken = true;
         pop_backstep();
     }
