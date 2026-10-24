@@ -1800,8 +1800,8 @@ class $modify(EchoPlayerObject, PlayerObject) {
         setRotation(gameplay);
     }
 
-// not on ios the function is too short to hook :/
-#ifndef GEODE_IS_IOS
+// not on ios the function is too short to hook :/ (android32 hooks it just as badly: the icon vanished)
+#if !defined(GEODE_IS_IOS) && !defined(GEODE_IS_ANDROID32)
     void setVisible(bool visible) {
         auto* layer = GJBaseGameLayer::get();
         if (layer && !Logic::get().is_traj_player(this)) {
@@ -1965,9 +1965,6 @@ class $modify(EchoPlayerObject, PlayerObject) {
 
     bool pushButton(PlayerButton button) {
         auto& logic = Logic::get();
-        // gd always queues a jump press inside resetLevel (silicate patch). while recording that press is not the player's
-        if (logic.resetting && logic.is_recording() && button == PlayerButton::Jump && !logic.predicting && !Trajectory::get().isFake(this))
-            return false;
         if (!Trajectory::get().isFake(this))
             if (tracing()) {
                 auto* layer = GJBaseGameLayer::get();
@@ -2856,7 +2853,7 @@ class $modify(EchoDirector, CCDirector) {
         }
         auto& logic = Logic::get();
         logic.sync_render_pause_button();
-#ifdef GEODE_IS_IOS
+#if defined(GEODE_IS_IOS) || defined(GEODE_IS_ANDROID32)
         struct DrawHidden {
             std::array<std::pair<CCNode*, bool>, 2> held{};
 
