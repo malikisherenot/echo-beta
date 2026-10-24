@@ -279,6 +279,7 @@ void Logic::note_death_hold(PlayLayer* play) {
 
 void Logic::capture_restart_holds(PlayLayer* play) {
     restart_hold_captured = false;
+    release_checkpoint_holds_on_reset = false;
     traj_flip_p1 = traj_flip_p2 = false;
     traj_flip_hold_p1 = traj_flip_hold_p2 = false;
     bool held_through_death = jump_held_since_death;
@@ -287,10 +288,15 @@ void Logic::capture_restart_holds(PlayLayer* play) {
     for (const auto& cmd : play->m_queuedButtons)
         note_direction_press(cmd);
     bool from_checkpoint = get_latest_checkpoint(play);
-    if (from_checkpoint) {
+    // A practice reset normally preserves the checkpoint's hold state. During recording, though,
+    // a touch held through death can leave both the UI touch id and macro state down. Neutralize
+    // that input at the checkpoint so it cannot be replayed as a phantom hold on respawn.
+    if (from_checkpoint && !(is_recording() && held_through_death)) {
         suppress_auto_hold = false;
         return;
     }
+    if (from_checkpoint)
+        release_checkpoint_holds_on_reset = true;
     // holding thru death must NOT hold the next attempt
     // but if nothing is down there is nothing to block (it ate the first click)
     bool down = jump_input_down(play);
@@ -1083,6 +1089,8 @@ static void reshuffle_sequence(Logic& logic) {
 }
 
 void Logic::on_reset(PlayLayer* play) {
+    const bool release_checkpoint_holds = release_checkpoint_holds_on_reset;
+    release_checkpoint_holds_on_reset = false;
     // a new attempt (not a step back) starts w/ nothing held by best frame
     if (!backstepping) best_hold_owned = false;
     clear_click_hitbox();
@@ -1170,6 +1178,33 @@ void Logic::on_reset(PlayLayer* play) {
     if (from_checkpoint) {
         if (!backstepping) object_restore = saved->object;
         trim_from_checkpoint(play, *saved);
+        if (release_checkpoint_holds && is_recording()) {
+            bool added_release = false;
+            auto release_recorded_hold = [&](bool player2, int button) {
+                if (!records_player(player2) || !held_at(player2, step_frame, button)) return;
+                Frame release;
+                release.number = step_frame;
+                release.holding = false;
+                release.player2 = player2;
+                release.button = (unsigned char)button;
+                add_input(release);
+                added_release = true;
+            };
+            release_recorded_hold(false, JUMP);
+            release_recorded_hold(true, JUMP);
+            if (play->m_isPlatformer) {
+                release_recorded_hold(false, LEFT);
+                release_recorded_hold(false, RIGHT);
+                release_recorded_hold(true, LEFT);
+                release_recorded_hold(true, RIGHT);
+            }
+            if (added_release) {
+                // Keep the same-frame releases after the old presses, and invalidate hold-history
+                // caches so restore_holds sees the neutral state immediately on respawn.
+                sort_inputs();
+                if (!is_playing()) replay_pos = inputs.size();
+            }
+        }
         play->m_queuedButtons.clear();
     }
     else if (is_recording()) {
@@ -1449,7 +1484,9 @@ void Logic::restore_holds(PlayLayer* play) {
         play->m_queuedButtons.push_back(cmd);
     }
     if (recording && checkpoint) sort_inputs();
-    ghost_guard_frame = (recording && !playing && checkpoint) ? step_frame + 1 : -1;
+    // GameDirector can queue a synthetic jump as part of either kind of respawn.
+    // The first-frame guard is needed from a fresh attempt too, not only a checkpoint.
+    ghost_guard_frame = (recording && !playing) ? step_frame + 1 : -1;
     restoring_holds = false;
     restart_hold_captured = false;
     death_jump_p1 = death_jump_p2 = false;

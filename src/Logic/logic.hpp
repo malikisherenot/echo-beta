@@ -581,6 +581,8 @@ public:
 	int ghost_guard_frame = -1;
 	bool immediate_restart = false, arm_immediate_restart = false;
 	bool suppress_auto_hold = false, jump_held_since_death = false;
+	// A held jump at death must be neutralized when recording resumes from a practice checkpoint.
+	bool release_checkpoint_holds_on_reset = false;
 	bool routing_input = false;
 	std::map<int, int> routed_keys;
 	bool key_jump_p1 = false, key_jump_p2 = false, key_left_p1 = false, key_right_p1 = false;
