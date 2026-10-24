@@ -72,7 +72,8 @@ static int overlay_z_order(GJBaseGameLayer* play) {
     if (auto* editor = typeinfo_cast<LevelEditorLayer*>(play); editor && editor->m_editorUI) {
         return editor->m_editorUI->getZOrder() - 1;
     }
-    return (play->m_uiLayer ? play->m_uiLayer->getZOrder() : 101) + 1;
+    // BELOW the ui layer so the hud & labels draw over hitboxes (it was +1 = on top of them)
+    return (play->m_uiLayer ? play->m_uiLayer->getZOrder() : 101) - 1;
 }
 
 class EchoHitboxNode : public CCDrawNode {
