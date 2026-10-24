@@ -1,4 +1,5 @@
 // whats on each page of the menu: replay, assists, visuals, library, clickbot, render & settings
+#include <array>
 #include "Hooks/opt.hpp"
 #include "GUI/gui.hpp"
 #include "GUI/logo_texture.hpp"
@@ -57,6 +58,19 @@ static bool quad_row(const char* label, const char* id, bool& p1, bool& p2, cons
     return true;
 }
 
+// shows a Reset next to a color once it differs from its default
+static void reset_color(float* tint, const std::array<float, 4>& def) {
+    bool same = true;
+    for (int i = 0; i < 4; ++i)
+        if (std::fabs(tint[i] - def[(size_t)i]) > 0.0005f) same = false;
+    if (same) return;
+    ImGui::SameLine();
+    if (EchoUI::Button("Reset##reset-color", ImVec2(ImGui::CalcTextSize("Reset").x + ImGui::GetStyle().FramePadding.x * 2.f, 0.f))) {
+        std::copy(def.begin(), def.end(), tint);
+        save();
+    }
+}
+
 static void draw_hitbox_settings() {
     auto& logic = Logic::get();
     toggle("Fill Hitboxes", logic.fill_hitboxes);
@@ -93,30 +107,32 @@ static void draw_hitbox_settings() {
     saved_on_release();
 
     EchoUI::SectionLabel("Shown and colors");
-    auto shape = [](const char* label, bool& enabled, float* tint) {
+    auto shape = [](const char* label, bool& enabled, float* tint, std::array<float, 4> def) {
         ImGui::PushID(label);
         if (EchoUI::ColorEdit4("##color", tint, ImGuiColorEditFlags_AlphaBar)) save();
+        reset_color(tint, def);
         ImGui::SameLine();
         toggle(label, enabled);
         ImGui::PopID();
     };
-    shape("Player box", logic.hitbox_player, logic.hitbox_outer_color);
+    shape("Player box", logic.hitbox_player, logic.hitbox_outer_color, { 1.f, 1.f, 1.f, 1.f });
     EchoUI::RowHalf();
-    shape("Inner box", logic.hitbox_inner, logic.hitbox_inner_color);
-    shape("Rotated box", logic.hitbox_rotated, logic.hitbox_rotated_color);
+    shape("Inner box", logic.hitbox_inner, logic.hitbox_inner_color, { 0.35f, 1.f, 0.45f, 1.f });
+    shape("Rotated box", logic.hitbox_rotated, logic.hitbox_rotated_color, { 1.f, 0.25f, 0.25f, 1.f });
     EchoUI::RowHalf();
-    shape("Player circle", logic.hitbox_circle, logic.hitbox_circle_color);
-    shape("Solids", logic.hitbox_solid, logic.hitbox_solid_color);
-    shape("Passable", logic.hitbox_passable, logic.hitbox_passable_color);
+    shape("Player circle", logic.hitbox_circle, logic.hitbox_circle_color, { 0.45f, 0.75f, 1.f, 1.f });
+    shape("Solids", logic.hitbox_solid, logic.hitbox_solid_color, { 0.15f, 0.35f, 1.f, 1.f });
+    shape("Passable", logic.hitbox_passable, logic.hitbox_passable_color, { 0.f, 0.85f, 0.85f, 1.f });
     EchoUI::RowHalf();
-    shape("Slopes", logic.hitbox_slope, logic.hitbox_slope_color);
-    shape("Hazards", logic.hitbox_hazard, logic.hitbox_hazard_color);
+    shape("Slopes", logic.hitbox_slope, logic.hitbox_slope_color, { 0.45f, 0.55f, 1.f, 1.f });
+    shape("Hazards", logic.hitbox_hazard, logic.hitbox_hazard_color, { 1.f, 0.15f, 0.15f, 1.f });
     EchoUI::RowHalf();
-    shape("Orbs, pads, portals", logic.hitbox_interact, logic.hitbox_interact_color);
-    shape("Click", logic.hitbox_click, logic.hitbox_click_color);
+    shape("Orbs, pads, portals", logic.hitbox_interact, logic.hitbox_interact_color, { 0.2f, 1.f, 0.35f, 1.f });
+    shape("Click", logic.hitbox_click, logic.hitbox_click_color, { 1.f, 0.85f, 0.15f, 1.f });
     EchoUI::RowHalf();
     if (EchoUI::ColorEdit4("Release", logic.hitbox_release_color, ImGuiColorEditFlags_AlphaBar))
         save();
+    reset_color(logic.hitbox_release_color, { 0.35f, 0.7f, 1.f, 1.f });
 }
 
 static void draw_traj_settings() {
@@ -145,16 +161,17 @@ static void draw_traj_settings() {
     ImGui::SameLine();
     EchoUI::Help();
     tip("Player 2 uses the inverted colors.");
-    auto line = [](const char* label, bool& enabled, float* tint) {
+    auto line = [](const char* label, bool& enabled, float* tint, std::array<float, 4> def) {
         ImGui::PushID(label);
         if (EchoUI::ColorEdit4("##color", tint, ImGuiColorEditFlags_AlphaBar)) save();
+        reset_color(tint, def);
         ImGui::SameLine();
         toggle(label, enabled);
         ImGui::PopID();
     };
-    line("Hold", logic.traj_hold, logic.traj_color);
-    line("Release", logic.traj_release, logic.traj_release_color);
-    line("Swift", logic.traj_swift, logic.traj_swift_color);
+    line("Hold", logic.traj_hold, logic.traj_color, { 0.f, 1.f, 0.f, 1.f });
+    line("Release", logic.traj_release, logic.traj_release_color, { 0.25f, 0.65f, 1.f, 1.f });
+    line("Swift", logic.traj_swift, logic.traj_swift_color, { 1.f, 0.75f, 0.15f, 1.f });
 }
 
 static void draw_label_settings() {
@@ -771,6 +788,8 @@ void GUI::tools() {
         if (toggle("Trajectory Autoclicker", logic.traj_autoclicker)) Logic::get().reset_traj();
         GUI::get().offer_rebind("key-traj-autoclick", "Automatically clicks or releases when the next frame would kill you. Works without Show Trajectory.");
         ImGui::BeginDisabled(!logic.traj_autoclicker);
+        if (quad_row("Trajectory Autoclick Players", "##traj-click-players", logic.traj_click_p1, logic.traj_click_p2, "Which player the trajectory autoclicker clicks for."))
+            GUI::get().persist();
         EchoUI::Row("Lookahead", "Clicks when you would die within this many frames.");
         if (EchoUI::InputInt("##traj-lookahead", &logic.traj_click_lookahead))
             logic.traj_click_lookahead = std::clamp(logic.traj_click_lookahead, 1, 240);

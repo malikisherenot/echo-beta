@@ -386,6 +386,25 @@ void GUI::color_row(const char* label, float* color, int id) {
         Logic::get().save_settings_file();
         GUI::get().export_theme(GUI::get().theme_path("current"));
     }
+    // the four editor player colors have fixed defaults
+    static const float DEFAULTS[4][4] = {
+        { 0.20f, 0.55f, 0.95f, 1.f }, { 0.95f, 0.45f, 0.25f, 1.f }, { 0.55f, 0.82f, 1.f, 1.f }, { 1.f, 0.72f, 0.45f, 1.f } };
+    auto& logic = Logic::get();
+    float* known[4] = { logic.editor_p1, logic.editor_p2, logic.editor_sel_p1, logic.editor_sel_p2 };
+    for (int i = 0; i < 4; ++i) {
+        if (color != known[i]) continue;
+        bool same = true;
+        for (int c = 0; c < 4; ++c)
+            if (std::fabs(color[c] - DEFAULTS[i][c]) > 0.0005f) same = false;
+        if (same) break;
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Reset")) {
+            std::copy(DEFAULTS[i], DEFAULTS[i] + 4, color);
+            logic.save_settings_file();
+            GUI::get().export_theme(GUI::get().theme_path("current"));
+        }
+        break;
+    }
     ImGui::SameLine();
     ImGui::TextUnformatted(label);
     ImGui::PopID();
@@ -1158,7 +1177,9 @@ void GUI::draw_macro_picker() {
         if (!needle.empty() && blob.find(needle) == std::string::npos) continue;
         ++shown;
         ImVec2 row = ImGui::GetCursorScreenPos();
-        float row_h = ImGui::GetTextLineHeight();
+        // buttons a bit taller than a text line, the name is centered on them
+        float row_h = ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.y;
+        float text_y = row.y + (row_h - ImGui::GetTextLineHeight()) * .5f;
         std::string row_id = "##replay-" + geode::utils::string::pathToString(path);
         const bool can_continue = !state.sequence && !state.merge;
         const float continue_w = ImGui::CalcTextSize("Continue").x + ImGui::GetStyle().FramePadding.x * 2.f;
@@ -1167,15 +1188,15 @@ void GUI::draw_macro_picker() {
         bool picked = EchoUI::Selectable(row_id.c_str(), false, 0, ImVec2(row_w, row_h));
         auto* draw = ImGui::GetWindowDrawList();
         float text_x = row.x + ImGui::GetStyle().FramePadding.x;
-        draw->AddText(ImVec2(text_x, row.y), ImGui::GetColorU32(ImGuiCol_Text), shown_name.name.c_str());
+        draw->AddText(ImVec2(text_x, text_y), ImGui::GetColorU32(ImGuiCol_Text), shown_name.name.c_str());
         if (!shown_name.tag.empty()) {
             float tag_x = text_x + ImGui::CalcTextSize(shown_name.name.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
-            draw->AddText(ImVec2(tag_x, row.y), ImGui::GetColorU32(ImGuiCol_TextDisabled), shown_name.tag.c_str());
+            draw->AddText(ImVec2(tag_x, text_y), ImGui::GetColorU32(ImGuiCol_TextDisabled), shown_name.tag.c_str());
         }
         if (can_continue) {
             ImGui::SameLine();
             std::string rename_id = "Rename##rename-" + geode::utils::string::pathToString(path);
-            if (EchoUI::Button(rename_id.c_str(), ImVec2(rename_w, 0.f))) {
+            if (EchoUI::Button(rename_id.c_str(), ImVec2(rename_w, row_h))) {
                 g_rename_from = path;
                 g_rename_text = shown_name.name;
                 g_rename_suffix = geode::utils::string::pathToString(path.filename()).substr(shown_name.name.size());
@@ -1184,7 +1205,7 @@ void GUI::draw_macro_picker() {
             }
             ImGui::SameLine();
             std::string continue_id = "Continue##continue-" + geode::utils::string::pathToString(path);
-            if (EchoUI::Button(continue_id.c_str(), ImVec2(continue_w, 0.f))) {
+            if (EchoUI::Button(continue_id.c_str(), ImVec2(continue_w, row_h))) {
                 Logic::get().start_continue(path);
                 ImGui::CloseCurrentPopup();
             }
