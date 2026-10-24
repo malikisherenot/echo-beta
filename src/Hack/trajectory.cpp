@@ -585,7 +585,7 @@ void Trajectory::press_fake(const Line& line, PlayerObject* fake, ClickType clic
 ClickType Trajectory::next_click(PlayLayer* play, bool player1) const {
 	const auto& logic = Logic::get();
 	PlayerObject* body = player1 ? play->m_player1 : play->m_player2;
-	if (logic.maintain_gravity && logic.records_player(!player1) && body && body->m_isDart)
+	if (logic.maintain_gravity && logic.records_icon(play, !player1) && body && body->m_isDart)
 		return Logic::get().physical_hold(play, !player1) ? ClickType::Hold : ClickType::Release;
 	for (auto it = play->m_queuedButtons.rbegin(); it != play->m_queuedButtons.rend(); ++it) {
 		int button = (int)it->m_button;
@@ -599,7 +599,7 @@ ClickType Trajectory::actual_click(PlayLayer* play, bool player1) const {
 	const auto& logic = Logic::get();
 	if (logic.plays_player(!player1)) return ClickType::Replay;
 	PlayerObject* body = player1 ? play->m_player1 : play->m_player2;
-	if (logic.maintain_gravity && logic.records_player(!player1) && body && body->m_isDart)
+	if (logic.maintain_gravity && logic.records_icon(play, !player1) && body && body->m_isDart)
 		return Logic::get().physical_hold(play, !player1) ? ClickType::Hold : ClickType::Release;
 	return jump_held(body) ? ClickType::Hold : ClickType::Release;
 }
@@ -1389,7 +1389,7 @@ void Trajectory::press_line(Line& line, int step) {
 
 	auto keep_gravity_hold = [&](PlayerObject* body) {
 		bool icon2 = is_second_fake(body);
-		if (!body->m_isDart || logic.plays_player(icon2) || !logic.maintain_gravity || !logic.records_player(icon2)) return;
+		if (!body->m_isDart || logic.plays_player(icon2) || !logic.maintain_gravity || !logic.records_icon(GJBaseGameLayer::get(), icon2)) return;
 		bool physically_held = line.uses_autoclicker ? line.autoclick.pressed : line.click == ClickType::Hold;
 		bool stash_orbs = Orbs::click_orb_assist(icon2);
 		if (stash_orbs) logic.suppress_rings = true;
@@ -1986,8 +1986,10 @@ void Trajectory::autoclick(PlayLayer* play) {
 	lookahead(play);
 	bool twoPlayer = play->m_levelSettings && play->m_levelSettings->m_twoPlayerMode;
 	bool dual = play->m_gameState.m_isDualMode && play->m_player2;
-	bool flip1 = logic.death_next_p1 || (dual && !twoPlayer && logic.death_next_p2);
-	bool flip2 = dual && twoPlayer && logic.death_next_p2;
+	bool allow1 = logic.traj_click_p1, allow2 = logic.traj_click_p2;
+	if (!allow1 && !allow2) return;
+	bool flip1 = allow1 && (logic.death_next_p1 || (dual && !twoPlayer && logic.death_next_p2));
+	bool flip2 = allow2 && dual && twoPlayer && logic.death_next_p2;
 	int lookahead_steps = std::max(logic.traj_click_lookahead, 1);
 	int current_lives[2] = { 0, 0 };
 	auto is_watched = [&](bool player2) {
@@ -2001,11 +2003,11 @@ void Trajectory::autoclick(PlayLayer* play) {
 		current_lives[player1 ? 0 : 1] = lives;
 		return true;
 	};
-	if (!flip1 && is_watched(false) && !logic.plays_player(false)) {
+	if (allow1 && !flip1 && is_watched(false) && !logic.plays_player(false)) {
 		bool dies_soon = dies_within_lookahead(true);
 		if (lookahead_steps > 1) flip1 = dies_soon;
 	}
-	if (!flip2 && dual && twoPlayer && is_watched(true) && !logic.plays_player(true)) {
+	if (allow2 && !flip2 && dual && twoPlayer && is_watched(true) && !logic.plays_player(true)) {
 		bool dies_soon = dies_within_lookahead(false);
 		if (lookahead_steps > 1) flip2 = dies_soon;
 	}
@@ -2019,7 +2021,7 @@ void Trajectory::autoclick(PlayLayer* play) {
 		int flip_lives = click_survival(play, player1, held ? ClickType::Release : ClickType::Hold, flip_full, horizon);
 		int swift_lives = click_survival(play, player1, ClickType::Swift, swift_full, horizon);
 		if (current > 0 && std::max(flip_lives, swift_lives) <= current) return;
-		if (logic.maintain_gravity && body && body->m_isDart && logic.records_player(!player1)) {
+		if (logic.maintain_gravity && body && body->m_isDart && logic.records_icon(play, !player1)) {
 			bool& flipped = player1 ? logic.traj_flip_p1 : logic.traj_flip_p2;
 			if (!flipped) {
 				Logic::get().physical_hold(play, !player1);
