@@ -507,7 +507,7 @@ public:
 	float traj_hold_alive_p1 = 0.f, traj_hold_alive_p2 = 0.f, traj_release_alive_p1 = 0.f;
 	float traj_release_alive_p2 = 0.f;
 	bool pause_before_kill = false;
-	bool traj_autoclicker = false;
+	bool traj_autoclicker = false, traj_click_p1 = true, traj_click_p2 = true;
 	int traj_click_lookahead = 1;
 	bool traj_flip_p1 = false, traj_flip_p2 = false;
 	bool traj_flip_hold_p1 = false, traj_flip_hold_p2 = false;
@@ -729,6 +729,13 @@ public:
 	bool plays_player(bool player2) const {
 		if (!is_playing()) return false;
 		return player2 ? play_p2 : play_p1;
+	}
+
+	// in a one player dual (no P2) both icons are driven by whichever side is being recorded
+	bool records_icon(GJBaseGameLayer* play, bool icon2) const {
+		bool two = play && play->m_levelSettings && play->m_levelSettings->m_twoPlayerMode;
+		if (play && play->m_gameState.m_isDualMode && !two) return records_player(false) || records_player(true);
+		return records_player(icon2);
 	}
 
 	bool records_player(bool player2) const {

@@ -503,6 +503,8 @@ void Logic::pull_settings() {
             if (auto flag = json["pause_before_kill"].asBool()) pause_before_kill = flag.unwrap();
             if (auto flag = json["trajectory_autoclicker"].asBool())
                 traj_autoclicker = flag.unwrap();
+            if (auto flag = json["trajectory_click_p1"].asBool()) traj_click_p1 = flag.unwrap();
+            if (auto flag = json["trajectory_click_p2"].asBool()) traj_click_p2 = flag.unwrap();
             if (auto number = json["trajectory_click_lookahead"].asInt())
                 traj_click_lookahead = std::max((int)number.unwrap(), 1);
             if (auto flag = json["trajectory_moving_objects"].asBool())
@@ -944,6 +946,8 @@ void Logic::save_settings_file() {
     json["frame_advance_speed"] = advance_speed;
     json["pause_before_kill"] = pause_before_kill;
     json["trajectory_autoclicker"] = traj_autoclicker;
+    json["trajectory_click_p1"] = traj_click_p1;
+    json["trajectory_click_p2"] = traj_click_p2;
     json["trajectory_click_lookahead"] = traj_click_lookahead;
     json["trajectory_moving_objects"] = traj_moving_objects;
     json["near_movers"] = near_movers;

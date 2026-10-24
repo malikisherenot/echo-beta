@@ -397,7 +397,7 @@ void Logic::match_live_holds(PlayLayer* play) {
             play->m_queuedButtons.push_back(cmd);
         };
         bool held = physical_hold(play, icon2);
-        if (maintain_gravity && body->m_isDart && records_player(icon2))
+        if (maintain_gravity && body->m_isDart && records_icon(play, icon2))
             held = held != body->m_isUpsideDown;
         if (!autoclicker_drives(icon2)) match(JUMP, held);
         if (!play->m_isPlatformer) continue;
@@ -1308,7 +1308,7 @@ static void put_hold(Logic& logic, PlayLayer* play, bool icon2, int button, bool
     auto* body = logic.icon_player(play, icon2);
     if (!body) return;
     bool have = Logic::button_held(body, button);
-    bool wave = button == JUMP && body->m_isDart && logic.maintain_gravity && logic.records_player(icon2);
+    bool wave = button == JUMP && body->m_isDart && logic.maintain_gravity && logic.records_icon(play, icon2);
     if (!want && button == JUMP) body->m_jumpBuffered = false;
     if (!want && button == LEFT) body->m_holdingLeft = false;
     if (!want && button == RIGHT) body->m_holdingRight = false;
@@ -1909,7 +1909,7 @@ void Logic::play_macro(GJBaseGameLayer* play, GJBaseGameLayer* layer, float dt, 
             int button = (int)cmd.m_button;
             bool jump_button = button == 0 || button == JUMP;
             auto* body = icon_player(play, cmd.m_isPlayer2);
-            return jump_button && body && body->m_isDart && records_player(cmd.m_isPlayer2) && !plays_player(cmd.m_isPlayer2);
+            return jump_button && body && body->m_isDart && records_icon(play, cmd.m_isPlayer2);
         });
     }
     int user_count = std::max(0, (int)queued.size() - replay);
