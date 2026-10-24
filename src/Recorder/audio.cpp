@@ -195,12 +195,26 @@ static void stop_song_slicing(FMODAudioEngine* engine) {
     if (engine) resume_group(engine->m_backgroundMusicChannel);
 }
 
+static bool g_frame_advance_holding = false;
+
+// frame advance pauses/slices the song groups. if sync audio goes off (or can't run) while that is
+// in effect nothing resumed them again & the song never played until a restart
+static void release_frame_advance_audio(FMODAudioEngine* engine) {
+    if (!g_frame_advance_holding) return;
+    g_frame_advance_holding = false;
+    if (!engine) return;
+    resume_group(engine->m_backgroundMusicChannel);
+    resume_group(engine->m_globalChannel);
+    resume_group(engine->m_reverbChannel);
+}
+
 void Logic::sync_audio_clock() {
     auto* engine = FMODAudioEngine::sharedEngine();
     if (!engine || !engine->m_system) return;
     bool music_speed_differs = !audio_speedhack && std::fabs(speedhack - 1.f) > 0.001f;
     if (!sync_audio || render_active() || music_speed_differs) {
         stop_song_slicing(engine);
+        release_frame_advance_audio(engine);
         return;
     }
     int threshold = std::clamp(sync_audio_threshold, 20, 2000);
@@ -224,6 +238,7 @@ void Logic::sync_audio_clock() {
     }
     if (!layer) {
         stop_song_slicing(engine);
+        release_frame_advance_audio(engine);
         return;
     }
 
@@ -231,7 +246,6 @@ void Logic::sync_audio_clock() {
     static double anchor_level_time = 0.0;
     static unsigned anchor_music_ms = 0;
     static double last_level_time = 0.0;
-    static bool frame_advance_holding = false;
     static std::unordered_map<FMOD::Channel*, EffectChannelAnchor> effect_anchors;
 
     auto for_each_group = [&](auto&& use) {
@@ -240,18 +254,18 @@ void Logic::sync_audio_clock() {
         use(engine->m_reverbChannel);
     };
     if (!frame_advance) {
-        if (frame_advance_holding) {
+        if (g_frame_advance_holding) {
             for_each_group([](FMOD::ChannelGroup* group) {
                 resume_group(group);
             });
-            frame_advance_holding = false;
+            g_frame_advance_holding = false;
         }
     }
 
     double level_time = layer->m_gameState.m_levelTime;
     if (frame_advance && started && !paused && !dead) {
         stop_song_slicing(engine);
-        frame_advance_holding = true;
+        g_frame_advance_holding = true;
         double level_step = level_time - last_level_time;
         if (level_step <= 0.0005) {
             if (!slice_still_running(engine->m_backgroundMusicChannel))
