@@ -1316,6 +1316,16 @@ static void restore_recorded_button(Logic& logic, PlayLayer* play, bool icon2, b
     logic.restoring_holds = false;
     if (held == stored) return;
     if (button == JUMP && logic.autoclicker_drives(icon2)) return;
+    // the macro says "held" at this frame but the player really isn't: the release is queued below
+    // so the hold stays on record, but the checkpoint's jump buffer must not survive it or every
+    // respawn replays a click (it repeated until the player clicked on their own)
+    if (button == JUMP && stored && !held) {
+        if (auto* body = logic.icon_player(play, icon2); body && !body->m_isDart) {
+            body->m_jumpBuffered = false;
+            body->m_wasJumpBuffered = false;
+            body->m_stateJumpBuffered = 0;
+        }
+    }
     PlayerButtonCommand cmd;
     cmd.m_button = (PlayerButton)button;
     cmd.m_isPush = held;
