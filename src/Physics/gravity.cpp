@@ -12,10 +12,11 @@ using namespace geode::prelude;
 namespace phys {
 void flipGravityInner(PlayerObject* player, bool gravity) {
     bool icon2 = false;
-    if (auto* layer = GJBaseGameLayer::get()) {
+    auto* layer = GJBaseGameLayer::get();
+    if (layer) {
         icon2 = player == layer->m_player2 || Trajectory::get().is_second_fake(player);
     }
-    bool ignoreUpsideDown = player->m_isDart && Logic::get().maintain_gravity && Logic::get().records_player(icon2);
+    bool ignoreUpsideDown = player->m_isDart && Logic::get().maintain_gravity && Logic::get().records_icon(layer, icon2);
 
     placeStreakPointState(player);
     if (!ignoreUpsideDown) {
