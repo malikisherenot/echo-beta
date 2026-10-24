@@ -577,6 +577,8 @@ public:
 	bool injecting = false;
 	bool applying_playback = false;
 	bool hold_sync = false, keep_checkpoint_hold = true;
+	// first step after a respawn while recording: a press w/ nothing physically held is a ghost & gets dropped
+	int ghost_guard_frame = -1;
 	bool immediate_restart = false, arm_immediate_restart = false;
 	bool suppress_auto_hold = false, jump_held_since_death = false;
 	bool routing_input = false;
@@ -588,7 +590,6 @@ public:
 	bool physical_right_p1 = false, physical_left_p2 = false, physical_right_p2 = false;
 	bool ffmpeg_missing = false;
 	bool resume_pending = false;
-	bool fresh_attempt_restore = false;
 	bool sequence_enabled = false, sequence_random = false;
 	std::string macro_name = "Replay";
 	bool macro_name_typed = false;

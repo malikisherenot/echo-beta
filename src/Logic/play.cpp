@@ -1449,6 +1449,7 @@ void Logic::restore_holds(PlayLayer* play) {
         play->m_queuedButtons.push_back(cmd);
     }
     if (recording && checkpoint) sort_inputs();
+    ghost_guard_frame = (recording && !playing && checkpoint) ? step_frame + 1 : -1;
     restoring_holds = false;
     restart_hold_captured = false;
     death_jump_p1 = death_jump_p2 = false;
