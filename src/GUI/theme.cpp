@@ -1082,6 +1082,45 @@ static void focus_search_on_open() {
 #endif
 }
 
+static fs::path g_rename_from;
+static std::string g_rename_text, g_rename_error, g_rename_suffix;
+static bool g_rename_open = false;
+
+// renames the file keeping whatever extension it has (.echo.json etc). returns false w/ an error to show
+static bool rename_replay(const fs::path& from, const std::string& wanted, const std::string& suffix, std::string& error) {
+    size_t first = wanted.find_first_not_of(" \t");
+    size_t last = wanted.find_last_not_of(" \t");
+    if (first == std::string::npos) {
+        error = "Type a name first";
+        return false;
+    }
+    std::string name = wanted.substr(first, last - first + 1);
+    if (name.find_first_of("/\\:*?\"<>|") != std::string::npos || name.front() == '.') {
+        error = "Names cant have / \\ : * ? \" < > | or start with a dot";
+        return false;
+    }
+    std::string file = name + suffix;
+    fs::path to = from.parent_path() / fs::path(std::u8string(file.begin(), file.end()));
+    std::error_code ec;
+    if (to == from) return true;
+    if (fs::exists(to, ec)) {
+        error = "A macro with that name already exists";
+        return false;
+    }
+    fs::rename(from, to, ec);
+    if (ec) {
+        error = "Could not rename: " + ec.message();
+        return false;
+    }
+    auto& logic = Logic::get();
+    if (logic.macro_path == from) {
+        logic.macro_path = to;
+        logic.macro_name = name;
+    }
+    if (logic.autosaved_path == from) logic.autosaved_path = to;
+    return true;
+}
+
 void GUI::draw_macro_picker() {
     auto& state = GUI::get().picker();
     static int drawn_frame = -1;
@@ -1121,13 +1160,34 @@ void GUI::draw_macro_picker() {
         ImVec2 row = ImGui::GetCursorScreenPos();
         float row_h = ImGui::GetTextLineHeight();
         std::string row_id = "##replay-" + geode::utils::string::pathToString(path);
-        bool picked = EchoUI::Selectable(row_id.c_str(), false, 0, ImVec2(0.f, row_h));
+        const bool can_continue = !state.sequence && !state.merge;
+        const float continue_w = ImGui::CalcTextSize("Continue").x + ImGui::GetStyle().FramePadding.x * 2.f;
+        const float rename_w = ImGui::CalcTextSize("Rename").x + ImGui::GetStyle().FramePadding.x * 2.f;
+        float row_w = can_continue ? ImGui::GetContentRegionAvail().x - continue_w - rename_w - ImGui::GetStyle().ItemSpacing.x * 2.f : 0.f;
+        bool picked = EchoUI::Selectable(row_id.c_str(), false, 0, ImVec2(row_w, row_h));
         auto* draw = ImGui::GetWindowDrawList();
         float text_x = row.x + ImGui::GetStyle().FramePadding.x;
         draw->AddText(ImVec2(text_x, row.y), ImGui::GetColorU32(ImGuiCol_Text), shown_name.name.c_str());
         if (!shown_name.tag.empty()) {
             float tag_x = text_x + ImGui::CalcTextSize(shown_name.name.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
             draw->AddText(ImVec2(tag_x, row.y), ImGui::GetColorU32(ImGuiCol_TextDisabled), shown_name.tag.c_str());
+        }
+        if (can_continue) {
+            ImGui::SameLine();
+            std::string rename_id = "Rename##rename-" + geode::utils::string::pathToString(path);
+            if (EchoUI::Button(rename_id.c_str(), ImVec2(rename_w, 0.f))) {
+                g_rename_from = path;
+                g_rename_text = shown_name.name;
+                g_rename_suffix = geode::utils::string::pathToString(path.filename()).substr(shown_name.name.size());
+                g_rename_error.clear();
+                g_rename_open = true;
+            }
+            ImGui::SameLine();
+            std::string continue_id = "Continue##continue-" + geode::utils::string::pathToString(path);
+            if (EchoUI::Button(continue_id.c_str(), ImVec2(continue_w, 0.f))) {
+                Logic::get().start_continue(path);
+                ImGui::CloseCurrentPopup();
+            }
         }
         if (picked) {
             if (state.sequence) Logic::get().append_sequence_file(path, state.amount);
@@ -1138,6 +1198,24 @@ void GUI::draw_macro_picker() {
     }
     if (shown == 0) ImGui::TextDisabled("No macros match");
     ImGui::EndChild();
+    const char* const rename_title = "Rename Macro";
+    if (std::exchange(g_rename_open, false)) ImGui::OpenPopup(rename_title);
+    if (EchoUI::BeginModal(rename_title, 20.f)) {
+        float wide = ImGui::GetContentRegionAvail().x;
+        ImGui::TextDisabled("New name");
+        ImGui::SetNextItemWidth(wide);
+        bool enter = EchoUI::InputText("##rename-text", &g_rename_text, ImGuiInputTextFlags_EnterReturnsTrue);
+        if (!g_rename_error.empty()) ImGui::TextColored(ImVec4(1.f, .36f, .48f, 1.f), "%s", g_rename_error.c_str());
+        float half = (wide - ImGui::GetStyle().ItemSpacing.x) * .5f;
+        bool apply = EchoUI::Button("Rename##apply-rename", ImVec2(half, 0.f)) || enter;
+        ImGui::SameLine();
+        if (EchoUI::Button("Cancel##cancel-rename", ImVec2(half, 0.f))) ImGui::CloseCurrentPopup();
+        if (apply && rename_replay(g_rename_from, g_rename_text, g_rename_suffix, g_rename_error)) {
+            GUI::get().refresh_files();
+            ImGui::CloseCurrentPopup();
+        }
+        EchoUI::EndModal();
+    }
     if (EchoUI::Button("Refresh", ImVec2(picker_wide, 0.f))) GUI::get().refresh_files();
     ImGui::EndPopup();
 }
