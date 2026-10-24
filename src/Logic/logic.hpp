@@ -577,12 +577,18 @@ public:
 	bool injecting = false;
 	bool applying_playback = false;
 	bool hold_sync = false, keep_checkpoint_hold = true;
-	// first step after a respawn while recording: a press w/ nothing physically held is a ghost & gets dropped
-	int ghost_guard_frame = -1;
+	// "continue" from the macro browser: practice mode at 5x until the loaded macro runs out, then keep recording
+	bool continuing = false, continue_waiting = false;
+	int continue_target = -1;
+	float continue_prev_speed = 1.f;
+	void* continue_play = nullptr;
+	fs::path continue_wait_path;
+	void start_continue(const fs::path& path);
+	void begin_continue();
+	void finish_continue();
+	int continue_steps_left(GJBaseGameLayer* play);
 	bool immediate_restart = false, arm_immediate_restart = false;
 	bool suppress_auto_hold = false, jump_held_since_death = false;
-	// A held jump at death must be neutralized when recording resumes from a practice checkpoint.
-	bool release_checkpoint_holds_on_reset = false;
 	bool routing_input = false;
 	std::map<int, int> routed_keys;
 	bool key_jump_p1 = false, key_jump_p2 = false, key_left_p1 = false, key_right_p1 = false;

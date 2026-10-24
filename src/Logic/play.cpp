@@ -107,6 +107,65 @@ void Logic::toggle_playing() {
     if (was_recording && !is_recording()) autosave_replay();
 }
 
+void Logic::start_continue(const fs::path& path) {
+    if (!PlayLayer::get()) {
+        notify("Open a level first", false);
+        return;
+    }
+    if (continuing) finish_continue();
+    continue_wait_path = path;
+    continue_waiting = true;
+    // read_file loads on a thread, begin_continue gets called once the macro is in
+    if (!read_file(path)) continue_waiting = false;
+}
+
+void Logic::begin_continue() {
+    continue_waiting = false;
+    auto* play = PlayLayer::get();
+    if (!play || inputs.empty()) {
+        notify("Nothing to continue from", false);
+        return;
+    }
+    int target = 0;
+    for (const auto& input : inputs)
+        target = std::max(target, input.number);
+    state = RunState::RecordingAndPlaying;
+    continue_target = target;
+    continue_play = play;
+    continue_prev_speed = std::abs(speedhack - 5.f) < 0.001f ? 1.f : speedhack;
+    speedhack = 5.f;
+    sync_time_scale();
+    sync_playback_fps();
+    continuing = true;
+    if (!play->m_isPracticeMode) play->togglePracticeMode(true);
+    play->resetLevel();
+    notify(fmt::format("Continuing at 5x up to frame {}", target), true);
+}
+
+void Logic::finish_continue() {
+    if (!continuing) return;
+    continuing = false;
+    continue_play = nullptr;
+    continue_target = -1;
+    speedhack = continue_prev_speed;
+    sync_time_scale();
+    sync_playback_fps();
+}
+
+int Logic::continue_steps_left(GJBaseGameLayer* play) {
+    if (!continuing) return std::numeric_limits<int>::max();
+    if (play != (GJBaseGameLayer*)continue_play || !is_playing()) {
+        finish_continue();
+        return std::numeric_limits<int>::max();
+    }
+    int left = continue_target - step_frame;
+    if (left <= 0) {
+        finish_continue();
+        return 0;
+    }
+    return left;
+}
+
 bool Logic::route_to_recorded_player(bool& player1) {
     bool record1 = records_player(false), record2 = records_player(true);
     if (record1 == record2) return false;
@@ -279,7 +338,6 @@ void Logic::note_death_hold(PlayLayer* play) {
 
 void Logic::capture_restart_holds(PlayLayer* play) {
     restart_hold_captured = false;
-    release_checkpoint_holds_on_reset = false;
     traj_flip_p1 = traj_flip_p2 = false;
     traj_flip_hold_p1 = traj_flip_hold_p2 = false;
     bool held_through_death = jump_held_since_death;
@@ -288,15 +346,10 @@ void Logic::capture_restart_holds(PlayLayer* play) {
     for (const auto& cmd : play->m_queuedButtons)
         note_direction_press(cmd);
     bool from_checkpoint = get_latest_checkpoint(play);
-    // A practice reset normally preserves the checkpoint's hold state. During recording, though,
-    // a touch held through death can leave both the UI touch id and macro state down. Neutralize
-    // that input at the checkpoint so it cannot be replayed as a phantom hold on respawn.
-    if (from_checkpoint && !(is_recording() && held_through_death)) {
+    if (from_checkpoint) {
         suppress_auto_hold = false;
         return;
     }
-    if (from_checkpoint)
-        release_checkpoint_holds_on_reset = true;
     // holding thru death must NOT hold the next attempt
     // but if nothing is down there is nothing to block (it ate the first click)
     bool down = jump_input_down(play);
@@ -1089,8 +1142,6 @@ static void reshuffle_sequence(Logic& logic) {
 }
 
 void Logic::on_reset(PlayLayer* play) {
-    const bool release_checkpoint_holds = release_checkpoint_holds_on_reset;
-    release_checkpoint_holds_on_reset = false;
     // a new attempt (not a step back) starts w/ nothing held by best frame
     if (!backstepping) best_hold_owned = false;
     clear_click_hitbox();
@@ -1178,33 +1229,6 @@ void Logic::on_reset(PlayLayer* play) {
     if (from_checkpoint) {
         if (!backstepping) object_restore = saved->object;
         trim_from_checkpoint(play, *saved);
-        if (release_checkpoint_holds && is_recording()) {
-            bool added_release = false;
-            auto release_recorded_hold = [&](bool player2, int button) {
-                if (!records_player(player2) || !held_at(player2, step_frame, button)) return;
-                Frame release;
-                release.number = step_frame;
-                release.holding = false;
-                release.player2 = player2;
-                release.button = (unsigned char)button;
-                add_input(release);
-                added_release = true;
-            };
-            release_recorded_hold(false, JUMP);
-            release_recorded_hold(true, JUMP);
-            if (play->m_isPlatformer) {
-                release_recorded_hold(false, LEFT);
-                release_recorded_hold(false, RIGHT);
-                release_recorded_hold(true, LEFT);
-                release_recorded_hold(true, RIGHT);
-            }
-            if (added_release) {
-                // Keep the same-frame releases after the old presses, and invalidate hold-history
-                // caches so restore_holds sees the neutral state immediately on respawn.
-                sort_inputs();
-                if (!is_playing()) replay_pos = inputs.size();
-            }
-        }
         play->m_queuedButtons.clear();
     }
     else if (is_recording()) {
@@ -1285,14 +1309,7 @@ static void put_hold(Logic& logic, PlayLayer* play, bool icon2, int button, bool
     if (!body) return;
     bool have = Logic::button_held(body, button);
     bool wave = button == JUMP && body->m_isDart && logic.maintain_gravity && logic.records_player(icon2);
-    if (!want && button == JUMP) {
-        body->m_jumpBuffered = false;
-        // a restart/practice restore must not keep the checkpoint's stale orb/ring buffer alive
-        if (logic.restoring_holds) {
-            body->m_wasJumpBuffered = false;
-            body->m_stateJumpBuffered = 0;
-        }
-    }
+    if (!want && button == JUMP) body->m_jumpBuffered = false;
     if (!want && button == LEFT) body->m_holdingLeft = false;
     if (!want && button == RIGHT) body->m_holdingRight = false;
     if (have == want && !(wave && body->m_jumpBuffered != want)) return;
@@ -1351,16 +1368,6 @@ static void restore_recorded_button(Logic& logic, PlayLayer* play, bool icon2, b
     logic.restoring_holds = false;
     if (held == stored) return;
     if (button == JUMP && logic.autoclicker_drives(icon2)) return;
-    // the macro says "held" at this frame but the player really isn't: the release is queued below
-    // so the hold stays on record, but the checkpoint's jump buffer must not survive it or every
-    // respawn replays a click (it repeated until the player clicked on their own)
-    if (button == JUMP && stored && !held) {
-        if (auto* body = logic.icon_player(play, icon2); body && !body->m_isDart) {
-            body->m_jumpBuffered = false;
-            body->m_wasJumpBuffered = false;
-            body->m_stateJumpBuffered = 0;
-        }
-    }
     PlayerButtonCommand cmd;
     cmd.m_button = (PlayerButton)button;
     cmd.m_isPush = held;
@@ -1484,9 +1491,6 @@ void Logic::restore_holds(PlayLayer* play) {
         play->m_queuedButtons.push_back(cmd);
     }
     if (recording && checkpoint) sort_inputs();
-    // GameDirector can queue a synthetic jump as part of either kind of respawn.
-    // The first-frame guard is needed from a fresh attempt too, not only a checkpoint.
-    ghost_guard_frame = (recording && !playing) ? step_frame + 1 : -1;
     restoring_holds = false;
     restart_hold_captured = false;
     death_jump_p1 = death_jump_p2 = false;
@@ -2247,6 +2251,8 @@ void Logic::set_tps(float rate) {
         int frame = PlayLayer::get() ? get_frame(PlayLayer::get()) : 0;
         place_rate(frame, rate);
         message = fmt::format("TPS {:.2f} at frame {}", rate, frame);
+        if (is_playing() && std::abs(rate - rate_at(frame > 0 ? frame - 1 : 0)) > 1e-3f)
+            notify(fmt::format("TPS changed to {:.2f} while a macro plays, it can desync", rate), false);
     }
     else if (!is_playing()) {
         macro_fps = rate;
@@ -2255,6 +2261,8 @@ void Logic::set_tps(float rate) {
     }
     else if (playback_tps_changes) {
         // while a macro plays ts ONLY sets its starting tps (the 1 silicate gets wrong). the changes in the macro stay
+        if (std::abs(macro_fps - rate) > 1e-3f)
+            notify(fmt::format("The macro starts at {:.2f} TPS, playing it at {:.2f} can desync it", macro_fps, rate), false);
         macro_fps = rate;
         int frame = PlayLayer::get() ? get_frame(PlayLayer::get()) : 0;
         fps = rate_at(frame);

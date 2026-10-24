@@ -433,6 +433,7 @@ void Logic::run_frame(GJBaseGameLayer* play, float dt, const std::function<void(
         g_single_path = true;
         int steps = count_unlocked_steps(play, frame_dt);
         steps = std::min(steps, pause_kill_safe_steps());
+        steps = std::min(steps, continue_steps_left(play));
         int ran = 0;
         if (steps <= 0) {
             g_single_path = false;
