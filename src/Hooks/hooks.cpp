@@ -1401,6 +1401,16 @@ class $modify(EchoGameLayer, GJBaseGameLayer) {
             return;
         }
         bool jump_button_early = button == 0 || button == JUMP;
+        // the respawn queued a press (gd's own resetLevel does, & it is patched to always) that nobody made.
+        // it got recorded & then restored from the macro on every attempt until the player clicked
+        if (down && jump_button_early && value.ghost_guard_frame == value.step_frame + 1 && value.is_recording() && !value.is_playing() &&
+            !value.applying_playback && !value.restoring_holds && !value.injecting && !value.follow_injecting && !value.assist_input &&
+            !value.maintaining_gravity && !orb_swift && !tool_click && !value.autoclicker && !value.traj_autoclicker &&
+            !value.restart_hold_captured && !value.raw_jump(this, true) && !value.raw_jump(this, false)) {
+            if (tracing())
+                trace_event(fmt::format("DROP frame={} ghost press at respawn p1={}\n", value.step_frame + 1, player1));
+            return;
+        }
         if (value.suppress_auto_hold && jump_button_early && !value.applying_playback && !value.restoring_holds && !value.maintaining_gravity) {
             if (!down) {
                 value.suppress_auto_hold = false;
