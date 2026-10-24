@@ -265,6 +265,7 @@ bool Logic::read_file(const fs::path& path) {
                 logic.autosaved_path = ReplayIO::is_autosave(path) ? path : fs::path{};
                 ReplayIO::finish_load(fmt::format("Loaded {} ({} inputs)", title, amt));
                 logic.recompute_cps();
+                if (logic.continue_waiting && logic.continue_wait_path == path) logic.begin_continue();
             });
         }).detach();
     }
